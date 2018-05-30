@@ -1,0 +1,235 @@
+setwd("C:/Users/user/Google Drive/WD")
+getwd()
+
+library(dplyr)
+library(corrplot) # Visualization of a Correlation Matrix 
+library(caret)
+library(arules)
+
+#dataset
+iphone_matrix <- read.csv("iPhoneLargeMatrix.csv")
+iphone_matrix$id <- NULL
+iphone_matrix <- tbl_df(iphone_matrix) #tibble 
+class(iphone_matrix)
+#attributes()
+glimpse(iphone_matrix)
+summary(iphone_matrix)
+anyNA(iphone_matrix)
+head(iphone_matrix)
+tail(iphone_matrix)
+dim(iphone_matrix)
+names(iphone_matrix)
+
+#Correlation Matrix visualisation 
+corrplot(cor(iphone_matrix), order ="hclust") 
+
+#Feature selection
+#
+#Method: running Random Forest and check what varables has been used: predictors()
+#Data has to be discretized: (arules package)
+#Sample: 4000
+#The first method leaves 47 attributes + dependent variable
+disfixed7 <- discretize(iphone_matrix$iphoneSentiment, "fixed", categories= c(-Inf, -50, -10, -1, 1, 10, 50, Inf))
+summary(disfixed7)
+iphone_matrix_disc <- data.frame(iphone_matrix)
+#tracemem(iphone_matrix_disc) == tracemem(iphone_matrix)
+#untracemem(iphone_matrix)
+iphone_matrix_disc$iphoneSentiment <- disfixed7
+glimpse(iphone_matrix_disc)
+
+iphone_sample_4000 <- iphone_matrix_disc[sample(1:nrow(iphone_matrix_disc), 4000, replace = FALSE),]
+glimpse(iphone_sample_4000)
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, verboseIter = T)
+iphone_sample_RF <- train(iphoneSentiment~., data = iphone_sample_4000, method = "rf", trControl = ctrl)
+iphone_sample_RF
+predictors <- predictors(iphone_sample_RF) #list of the variables used in the RF model 
+predictors
+
+iphone_matrix_58_disc <- iphone_matrix_disc[, predictors]
+iphone_matrix_58_disc$iphoneSentiment <- iphone_matrix_disc$iphoneSentiment
+dim(iphone_matrix_58_disc)
+glimpse(iphone_matrix_58_disc)
+
+#Feature selection (method leaves only 19 attribures)
+#The second method: findCorrelation() evaluates the relationships within the dataset and creates a list of highly correlated predictors for elimination 
+#Data can't be discretized
+glimpse(iphone_matrix)
+descrCor <- cor(iphone_matrix)
+descrCor
+summary(descrCor[upper.tri(descrCor)])
+highlyCorDescr <- findCorrelation(descrCor, cutoff = .80)
+highlyCorDescr
+summary(highlyCorDescr)
+iphone_matrix_19_disc <- iphone_matrix_disc[, -highlyCorDescr]
+glimpse(iphone_matrix_19_disc)
+iphone_matrix_19_disc$iphoneSentiment <- iphone_matrix_disc$iphoneSentiment
+glimpse(iphone_matrix_19_disc)
+
+
+#2 datasets (19 and 58 predictors) with DISCRETIZED dependend var. (iphoneSentiment)
+
+#The first data partition 
+# 19 predictors + discretized dependend variable
+glimpse(iphone_matrix_19_disc)
+
+set.seed(111)
+TrainSize1 <- createDataPartition(y = iphone_matrix_19_disc$iphoneSentiment, p = .70, list = FALSE)
+training1 <- iphone_matrix_19_disc[TrainSize1,] 
+testing1 <- iphone_matrix_19_disc[- TrainSize1,] 
+dim(training1)
+dim(testing1)
+
+#train control
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, verboseIter = T)
+
+#SVM: 19 predictors + discretized dependent variable
+iphone_matrix_19_disc_svm <- train(iphoneSentiment~., data = training1, method = 'svmLinear2', trControl = ctrl)
+iphone_matrix_19_disc_svm
+
+#kNN - FAIL "toom many ties in knn"
+iphone_matrix_19_disc_knn <- train(iphoneSentiment~., data = training1, method = 'knn', trControl = ctrl)
+
+#C5.0
+iphone_matrix_19_disc_C5 <- train(iphoneSentiment~., data = training1, method = 'C5.0', trControl = ctrl)
+iphone_matrix_19_disc_C5
+
+#Naive Bayes
+iphone_matrix_19_disc_NB <- train(iphoneSentiment~., data = training1, method = 'naive_bayes', trControl = ctrl)
+iphone_matrix_19_disc_NB
+
+#RF
+iphone_matrix_19_disc_RF <- train(iphoneSentiment~., data = training1, method = 'rf', trControl = ctrl)
+iphone_matrix_19_disc_RF
+#
+#
+#
+#The second data partition 
+#58 predictors + discretized dependent variable
+glimpse(iphone_matrix_58_disc)
+
+set.seed(222)
+TrainSize2 <- createDataPartition(y = iphone_matrix_58_disc$iphoneSentiment, p = .70, list = FALSE)
+training2 <- iphone_matrix_58_disc[TrainSize2,] 
+testing2 <- iphone_matrix_58_disc[- TrainSize2,] 
+dim(training2)
+dim(testing2)
+
+#train control
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, verboseIter = T)
+
+#svm
+iphone_matrix_58_disc_svm <- train(iphoneSentiment~., data = training2, method = 'svmLinear2', trControl = ctrl)
+iphone_matrix_58_disc_svm
+
+#knn FAIL - "too many ties in knn" maybe data should be not discretized
+iphone_matrix_58_disc_knn <- train(iphoneSentiment~., data = training2, method = 'knn', trControl = ctrl)
+
+#C5.0
+iphone_matrix_58_disc_C5 <- train(iphoneSentiment~., data = training2, method = 'C5.0', trControl = ctrl)
+iphone_matrix_58_disc_C5
+
+#Naive Bayes
+iphone_matrix_58_disc_NB <- train(iphoneSentiment~., data = training2, method = 'naive_bayes', trControl = ctrl)
+iphone_matrix_58_disc_NB
+
+#RF
+iphone_matrix_58_disc_RF <- train(iphoneSentiment~., data = training2, method = 'rf', trControl = ctrl)
+iphone_matrix_58_disc_RF
+
+#
+#
+#
+#2 data sets: 19 and 58 predictors with INTEGER dependend variable (iphoneSentiment)
+iphone_matrix_19_int <- iphone_matrix[, -highlyCorDescr]
+iphone_matrix_19_int$iphoneSentiment <- iphone_matrix$iphoneSentiment
+glimpse(iphone_matrix_19_int)
+
+
+#The third data partition 
+# dataset: 19 predictors + integer dependend variable
+
+set.seed(333)
+TrainSize3 <- createDataPartition(y = iphone_matrix_19_int$iphoneSentiment, p = .70, list = FALSE)
+training3 <- iphone_matrix_19_int[TrainSize3,] 
+testing3 <- iphone_matrix_19_int[- TrainSize3,] 
+dim(training3)
+dim(testing3)
+
+#train control
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, verboseIter = T)
+
+#SVM: 19 predictors + integer dependent variable
+iphone_matrix_19_int_svm <- train(iphoneSentiment~., data = training3, method = 'svmLinear2', trControl = ctrl)
+iphone_matrix_19_int_svm
+
+#kNN - FAIL "toom many ties in knn"
+iphone_matrix_19_int_knn <- train(iphoneSentiment~., data = training3, method = 'knn', trControl = ctrl)
+
+#lm
+iphone_matrix_19_int_lm <- train(iphoneSentiment~., data = training3, method = 'lm', trControl = ctrl)
+iphone_matrix_19_int_lm
+
+#C5.0
+iphone_matrix_19_int_C5 <- train(iphoneSentiment~., data = training3, method = 'C5.0', trControl = ctrl)
+iphone_matrix_19_int_C5
+
+#Naive Bayes
+iphone_matrix_19_int_NB <- train(iphoneSentiment~., data = training3, method = 'naive_bayes', trControl = ctrl)
+iphone_matrix_19_int_NB
+
+#RF
+iphone_matrix_19_int_RF <- train(iphoneSentiment~., data = training3, method = 'rf', trControl = ctrl)
+iphone_matrix_19_int_RF
+#
+#
+#
+#The fourth data partition 
+#dataset: 58 predictors + integer dependent variable
+iphone_matrix_58_int <- iphone_matrix[, predictors]
+iphone_matrix_58_int$iphoneSentiment <- iphone_matrix$iphoneSentiment
+glimpse(iphone_matrix_58_int)
+dim(iphone_matrix_58_int)
+
+set.seed(444)
+TrainSize4 <- createDataPartition(y = iphone_matrix_58_int$iphoneSentiment, p = .70, list = FALSE)
+training4 <- iphone_matrix_58_int[TrainSize4,] 
+testing4 <- iphone_matrix_58_int[- TrainSize4,] 
+dim(training4)
+dim(testing4)
+
+#train control
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3, verboseIter = T)
+
+#svm
+iphone_matrix_58_int_svm <- train(iphoneSentiment~., data = training4, method = 'svmLinear2', trControl = ctrl)
+iphone_matrix_58_int_svm
+
+#knn FAIL - "too many ties in knn" maybe data should be not discretized
+iphone_matrix_58_int_knn <- train(iphoneSentiment~., data = training4, method = 'knn', trControl = ctrl)
+
+#lm
+iphone_matrix_58_int_lm <- train(iphoneSentiment~., data = training3, method = 'lm', trControl = ctrl)
+iphone_matrix_58_int_lm
+
+#C5.0
+iphone_matrix_58_int_C5 <- train(iphoneSentiment~., data = training4, method = 'C5.0', trControl = ctrl)
+iphone_matrix_58_int_C5
+
+#Naive Bayes
+iphone_matrix_58_int_NB <- train(iphoneSentiment~., data = training4, method = 'naive_bayes', trControl = ctrl)
+iphone_matrix_58_int_NB
+
+#RF
+iphone_matrix_58_int_RF <- train(iphoneSentiment~., data = training4, method = 'rf', trControl = ctrl)
+iphone_matrix_58_int_RF
+
+
+
+#Exctracting iphone realted attribures only (iphone_df)
+#Not necesary
+#iphone_df <- df %>% select(contains("iphone"), contains("ios"))
+#names(iphone_df)                           
+#Changing the order of the attributes (iphoneSentiment as the last one) 
+#iphone_df <- iphone_df[c(1:10, 12:15, 11)]
+
+save.image()
